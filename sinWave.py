@@ -3,12 +3,12 @@ import pyaudio
 import random
 
 
-FREQ_1 = 440
-FREQ_2 = 880
-INTERVAL = 2
+FREQ_1 = 880
+FREQ_2 = 440
+INTERVAL = .05
 VOLUME = .5
 
-FRAMERATE = 88000
+FRAMERATE = 44000
 SAMPLE_MAX = 2**15 - 1
 CHANNELS = 1
 SAMPLE_WIDTH = 2
@@ -26,9 +26,9 @@ def gen_interval(freq):
     temp = np.tile(temp, int(INTERVAL*freq*2))
     return temp
 
+
 def play_message(bits):
-    a = gen_interval(FREQ_1)
-    b = gen_interval(FREQ_2)
+    freqs = [gen_interval(FREQ_1), gen_interval(FREQ_2)]
 
     pa = pyaudio.PyAudio()
     stream = pa.open(format=pa.get_format_from_width(SAMPLE_WIDTH),
@@ -36,10 +36,15 @@ def play_message(bits):
                      rate=FRAMERATE,
                      output=True)
 
+    for bit in bits:
+        print(bit, end='', flush=True)
+        stream.write(freqs[bit])
+
     stream.stop_stream()
     stream.close()
 
     pa.terminate()
+
 
 if __name__ == "__main__":
     a = gen_interval(FREQ_1)

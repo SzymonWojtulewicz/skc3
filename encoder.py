@@ -1,58 +1,93 @@
 ﻿from bitarray import bitarray
+from bitarray.util import int2ba
 import numpy as np
 import struct
 import zlib
-import decoder
+import coder
 import audio
+import sinWave
+
 
 def encode(src, dst, msg):
-    #Wywolamy funkcję
-    #encode(1,2,'abc')
-    # żeby przesłać wiadomość abc od 1 do 2
 
-    # Reprezentacja src,dst,msg na bitach
-    # src, dst : int (rzutowanie na 6 bajtów)
-    src = struct.pack('!LH', src//(2**15), src%(2**15))
-    dst = struct.pack('!LH', dst//(2**15), dst%(2**15))
-    #msg : bytes, str
+    # convert to bytes
+    src = struct.pack('!LH', src//(2**15), src % (2**15))
+    dst = struct.pack('!LH', dst//(2**15), dst % (2**15))
+
     if isinstance(msg, str):
         msg = bytes(msg, 'utf8')
 
-    #reprezentacja przez bitarray
-    b = bitarray()
-    b.frombytes(msg)
+    # convert to bitarrays
+    source = bitarray()
+    source.frombytes(src)
+    destination = bitarray()
+    destination.frombytes(dst)
+    messsage = bitarray()
+    messsage.frombytes(msg)
+    length = bitarray()
+    length.frombytes(struct.pack("!H", len(messsage)))
 
-    # Skonstruować ramkę
-    frame = dst + src + struct.pack("!H", len(msg)) + msg
-    print(type(frame))
-    print(type(zlib.crc32(frame)))
+    frame = source + destination + length + messsage
+
+    # a control polynomial
     crc32 = zlib.crc32(frame)
     crc32 = struct.pack("!L", crc32)
-    frame = frame + crc32
-    # crc32: potraktuj bity jako współczynniki, dopisz 32 zera na końcu. Podziel z resztą przez 100000100110000010001110110110111 i zwrócić resztę z dzielenia.
-    frame = bitarray(frame)
-    # Skonstruować ciąg bitów do nadania
+    crc32B = bitarray()
+    crc32B.frombytes(crc32)
+
+    frame = frame + crc32B
+
+    # add an encoding
     preamble = bitarray('10101010' * 7 + '10101011')
-    bits = preamble + decoder.NRZI(decoder.B4B5(frame))
+    bits = preamble + coder.NRZI(coder.B4B5(frame))
+
+    sinWave.play_message(bits)
 
     return bits
-    # w NRZI pierwszy bit reprezentujemy jako zmianę względem ostatniej jedynki w preambule.
 
-    #Wyemitować
-    #glosnik(bity, 0.1, 440, 880)
+    # Wyemitować
+    # glosnik(bity, 0.1, 440, 880)
 
 
 def decode(bits):
+
+    # ommit first bits and decode
     bits = bits[64:]
+    bits = coder.reB4B5(coder.reNRZI(bits))
+
+    # assign parts to various properties
     crc32 = bits[-32:]
-    bits = bits[:-32]
-    check = bitarray(zlib.crc32(bits))
-    if check != crc32:
-        print("ERROR")
-        print(crc32)
-        print(check)
-    print(crc32)
-    return bits
+    source = bits[:48]
+    destination = bits[48:96]
+    length = bits[96:112]
+    message = bits[112:-32]
+    frame = bits[:-32]
+    check = bits[-32:]
+
+    # a control polynomial
+    crc32 = zlib.crc32(frame)
+    crc32 = struct.pack("!L", crc32)
+    crc32B = bitarray()
+    crc32B.frombytes(crc32)
+
+    # check if the crc32 codes match
+    if check != crc32B:
+        raise ValueError("crc32 codes don't match")
+
+    # change bitarrays to values
+    src = struct.unpack('!LH', source)
+    dst = struct.unpack('!LH', destination)
+    src = src[0]*(2**15) + src[1] % (2**15)
+    dst = dst[0]*(2**15) + dst[1] % (2**15)
+    ln = struct.unpack("!H", length)[0]
+    msg = bytes(message).decode('utf-8')
+
+    return (src, dst, msg)
+
 
 if __name__ == "__main__":
-    print(decode(encode(1,2,'abc')))
+    # a = bitarray([0, 0, 1, 1, 0, 1, 1, 0, 1])
+    # print(a)
+    # print(coder.reB4B5(coder.reNRZI((coder.NRZI(coder.B4B5(a))))))
+    # print(coder.reNRZI((coder.NRZI(a))))
+    print(decode(encode(7349183274, 591049237, '')))
